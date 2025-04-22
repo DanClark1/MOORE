@@ -130,6 +130,7 @@ class OrthogonalLayer1D(nn.Module):
 
     def __init__(self):
         super(OrthogonalLayer1D, self).__init__()
+        self.projection_matrix = None
 
     def forward(self,x):
 
@@ -142,6 +143,11 @@ class OrthogonalLayer1D(nn.Module):
                    For each sample, the outputs of all of the models (n_models) will be orthogonal
                    to each other.
         """
+        # initialise matrix
+        if self.projection_matrix is None:
+            self.projection_matrix = torch.nn.Parameter(torch.eye(x.shape[2], x.shape[2]))
+
+        return project_to_unique_subspaces(x, self.projection_matrix)
 
 
         x1 = torch.transpose(x, 0,1)
@@ -156,3 +162,35 @@ class OrthogonalLayer1D(nn.Module):
 
         basis = torch.transpose(basis,0,1)
         return basis
+
+
+def project_to_unique_subspaces(
+    U: torch.Tensor,
+    A: torch.Tensor
+) -> torch.Tensor:
+    """
+    Args:
+      U: (batch, K, dim)                — MoE outputs
+      A: (dim, dim)                     — unconstrained parameter
+    Returns:
+      V: (batch, K, dim)                — each expert in its own orthogonal subspace
+    """
+    batch, K, dim = U.shape
+    base, rem = divmod(dim, K)      # e.g. for dim=100, K=6 → base=16, rem=4
+    # first `rem` experts get (base+1) dims, the rest get base dims
+    sizes = [(base + 1) if i < rem else base for i in range(K)]
+    starts = [0] + list(torch.cumsum(torch.tensor(sizes), 0).tolist())
+
+    # build Cayley Q as before
+    S = A - A.t()
+    I = torch.eye(dim, device=A.device, dtype=A.dtype)
+    Q = torch.linalg.solve(I - S, I + S)  # (dim, dim)
+
+    V = torch.zeros_like(U)
+    for i in range(K):
+        s, e = starts[i], starts[i+1]
+        Bi = Q[:, s:e]           # shape (dim, sizes[i])
+        ui = U[:, i]             # shape (batch, dim)
+        coords = ui @ Bi         # → (batch, sizes[i])
+        V[:, i] = coords @ Bi.t()# → (batch, dim)
+    return V

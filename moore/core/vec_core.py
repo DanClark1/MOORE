@@ -182,10 +182,10 @@ class VecCore(object):
                   episodes_progress_bar, render, initial_states):
         
         # eval
-        if self.eval:
-            # TODO: do it better
-            return self._run_eval_impl(move_condition, fit_condition, steps_progress_bar,
-                                     episodes_progress_bar, render, initial_states)
+        # if self.eval:
+        #     # TODO: do it better
+        #     return self._run_eval_impl(move_condition, fit_condition, steps_progress_bar,
+        #                              episodes_progress_bar, render, initial_states)
         
         # self._total_episodes_counter = 0
         self._total_steps_counter = 0
