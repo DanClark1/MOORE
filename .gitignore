@@ -176,3 +176,4 @@ logs/
 */logs
 *_raw.npy
 __pycache__
+Miniconda3-latest-MacOSX-x86_64.sh
