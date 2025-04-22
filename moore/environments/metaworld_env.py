@@ -109,6 +109,7 @@ class MetaWorldEnv(Environment):
 
     @staticmethod
     def _convert_gym_space(space):
+        print(type(space))
         if isinstance(space, gym_spaces.Discrete):
             return Discrete(space.n)
         elif isinstance(space, gym_spaces.Box):
