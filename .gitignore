@@ -51,7 +51,7 @@ coverage.xml
 .pytest_cache/
 cover/
 
-Metaworld/*
+
 # Translations
 *.mo
 *.pot
