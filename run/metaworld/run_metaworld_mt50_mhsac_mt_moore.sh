@@ -9,4 +9,4 @@ python run_metaworld_sac_mt.py  --seed ${SEED} --n_exp 1 --exp_type MT50 --exp_n
                                 --actor_network MetaworldSACMixtureMHActorNetwork --critic_network MetaworldSACMixtureMHCriticNetwork --orthogonal --n_experts ${N_EXPERTS} --activation Linear --agg_activation Linear Tanh \
                                 --actor_n_features 400 400 400 --critic_n_features 400 400 400 --shared_mu_sigma \
                                 --initial_replay_size 1500 --max_replay_size 100000 --warmup_transitions 3000 \
-                                --n_episodes_test 10 --train_frequency 1 --sample_task_per_episode --rl_checkpoint_interval 1 --use_cuda --wandb --wandb_entity [WANDB_ENTITY]
+                                --n_episodes_test 10 --train_frequency 1 --sample_task_per_episode --rl_checkpoint_interval 1 --use_cuda --wandb --wandb_entity danclark
