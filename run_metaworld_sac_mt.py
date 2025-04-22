@@ -316,7 +316,7 @@ def run_experiment(args, save_dir, exp_id = 0, seed = None):
 
         metrics["all_metaworld"]["SuccessRate"].append(current_success_rate_avg / n_contexts)
 
-        if args.wandb:
+        if args.wandb and n % 10 == 0 :
             wandb.log({"all_metaworld/SuccessRate": current_success_rate_avg / n_contexts}, step = n+1, commit=True)
 
         if (n+1) % args.rl_checkpoint_interval == 0:
