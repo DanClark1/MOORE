@@ -4,7 +4,7 @@ N_EXPERTS=$1
 SEED=$2
 
 cd ../../
-python run_metaworld_sac_mt.py  --seed ${SEED} --n_exp 1 --exp_type MT50 --exp_name mhsac_moe_400x3lx${N_EXPERTS}e --results_dir logs/metaworld \
+python run_metaworld_sac_mt_parallel.py  --seed ${SEED} --n_exp 1 --exp_type MT50 --exp_name mhsac_moe_400x3lx${N_EXPERTS}e --results_dir logs/metaworld \
                                 --batch_size 128 --n_epochs 20 --n_steps 100000 --horizon 150 --gamma 0.99 --lr_actor 3e-4 --lr_critic 3e-4 --lr_alpha 1e-4 --log_std_min -10 --log_std_max 2 \
                                 --actor_network MetaworldSACMixtureMHActorNetwork --critic_network MetaworldSACMixtureMHCriticNetwork --n_experts ${N_EXPERTS} --activation Linear --agg_activation Linear Tanh \
                                 --actor_n_features 400 400 400 --critic_n_features 400 400 400 --shared_mu_sigma \
