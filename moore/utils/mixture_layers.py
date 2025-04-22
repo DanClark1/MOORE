@@ -143,11 +143,11 @@ class OrthogonalLayer1D(nn.Module):
                    For each sample, the outputs of all of the models (n_models) will be orthogonal
                    to each other.
         """
-        # initialise matrix
-        if self.projection_matrix is None:
-            self.projection_matrix = torch.nn.Parameter(torch.eye(x.shape[2], x.shape[2])).to('cuda')
+        # # initialise matrix
+        # if self.projection_matrix is None:
+        #     self.projection_matrix = torch.nn.Parameter(torch.eye(x.shape[2], x.shape[2])).to('cuda')
 
-        return project_to_unique_subspaces(x, self.projection_matrix)
+        # return project_to_unique_subspaces(x, self.projection_matrix)
 
 
         x1 = torch.transpose(x, 0,1)
