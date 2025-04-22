@@ -7,29 +7,32 @@ import multiprocessing
 from collections import OrderedDict
 from typing import Sequence
 
-import gym
+import gymnasium
 import numpy as np
 
 from moore.environments import VecEnv, CloudpickleWrapper
 
 
+
 def _worker(remote, parent_remote, env_fn_wrapper):
     parent_remote.close()
+    SEED = 0
     env = env_fn_wrapper.var()
     while True:
         try:
             cmd, data = remote.recv()
             if cmd == 'step':
-                observation, reward, absorbing, info = env.step(data)
+                observation, reward, terminated, truncated, info = env.step(data)
+                absorbing = terminated or truncated
                 # if absorbing:
                 #     # save final observation where user can get it, then reset
                 #     info['terminal_observation'] = observation
                 #     observation = env.reset()
                 remote.send((observation, reward, absorbing, info))
             elif cmd == 'seed':
-                remote.send(env.seed(data))
+                SEED = data
             elif cmd == 'reset':
-                observation = env.reset(data)
+                observation = env.reset()
                 remote.send(observation)
             elif cmd == 'render':
                 remote.send(env.render(data))
@@ -220,11 +223,11 @@ def _flatten_obs(obs, space):
     assert isinstance(obs, (list, tuple)), "expected list or tuple of observations per environment"
     assert len(obs) > 0, "need observations from at least one environment"
 
-    if isinstance(space, gym.spaces.Dict):
+    if isinstance(space, gymnasium.spaces.Dict):
         assert isinstance(space.spaces, OrderedDict), "Dict space must have ordered subspaces"
         assert isinstance(obs[0], dict), "non-dict observation for environment with Dict observation space"
         return OrderedDict([(k, np.stack([o[k] for o in obs])) for k in space.spaces.keys()])
-    elif isinstance(space, gym.spaces.Tuple):
+    elif isinstance(space, gymnasium.spaces.Tuple):
         assert isinstance(obs[0], tuple), "non-tuple observation for environment with Tuple observation space"
         obs_len = len(space.spaces)
         return tuple((np.stack([o[i] for o in obs]) for i in range(obs_len)))

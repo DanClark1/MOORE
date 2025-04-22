@@ -1,7 +1,7 @@
 import metaworld
 import random
 
-from gym import spaces as gym_spaces
+from gymnasium import spaces as gym_spaces
 import numpy as np
 
 try:
@@ -109,6 +109,7 @@ class MetaWorldEnv(Environment):
 
     @staticmethod
     def _convert_gym_space(space):
+        print(type(space))
         if isinstance(space, gym_spaces.Discrete):
             return Discrete(space.n)
         elif isinstance(space, gym_spaces.Box):
@@ -155,7 +156,7 @@ class MetaWorldTaskEnv(Environment):
 
         if state is None:
             # state, _ = self._env.reset()
-            state = self._env.reset()
+            state, obs = self._env.reset()
             return np.atleast_1d(state)
         else:
             self._env.reset()
@@ -164,8 +165,8 @@ class MetaWorldTaskEnv(Environment):
     
     def step(self, action):
         # action = self._convert_action(action)
-        obs, reward, absorbing, info = self._env.step(action)
-        return np.atleast_1d(obs), reward, absorbing, info
+        obs, reward, terminated, truncated, info = self._env.step(action)
+        return np.atleast_1d(obs), reward, terminated, truncated, info
     
 
     def render(self):

@@ -281,8 +281,8 @@ class VecCore(object):
     
     def _eval_step(self, i, render):
         action = self.agent.draw_action([i, self._state])
-        next_state, reward, absorbing, step_info = self.mdp.env_method("step", action, indices = i)[0]
-
+        next_state, reward, terminated, truncated, step_info = self.mdp.env_method("step", action, indices = i)[0]
+        absorbing = terminated or truncated
         self._episode_steps += 1
 
         if render:
