@@ -145,7 +145,7 @@ class OrthogonalLayer1D(nn.Module):
         """
         # initialise matrix
         if self.projection_matrix is None:
-            self.projection_matrix = torch.nn.Parameter(torch.eye(x.shape[2], x.shape[2]), device='cuda')
+            self.projection_matrix = torch.nn.Parameter(torch.eye(x.shape[2], x.shape[2])).to('cuda')
 
         return project_to_unique_subspaces(x, self.projection_matrix)
 
