@@ -23,7 +23,6 @@ import os
 from collections import defaultdict
 from datetime import datetime
 
-# Helper to split a flat trajectory into episodes
 
 def split_episodes(traj):
     episodes, current = [], []
@@ -36,11 +35,8 @@ def split_episodes(traj):
         episodes.append(current)
     return episodes
 
-# Unified save & load utilities with timestamped filenames
+
 def save_checkpoint(agent, save_dir, epoch=None):
-    """
-    Save actor, critic, and full agent with timestamp and optional epoch.
-    """
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
     suffix = f"_{epoch}_{ts}" if epoch is not None else f"_{ts}"
     # actor
@@ -53,37 +49,27 @@ def save_checkpoint(agent, save_dir, epoch=None):
     # full agent
     agent.save(os.path.join(save_dir, f"agent/agent{suffix}"), full_save=True)
 
-# Load existing checkpoints if found (ignores timestamp suffix)
-def load_checkpoint(agent, load_dir):
-    """
-    Attempt to load the most recent agent checkpoint from load_dir/agent.
-    """
-    agent_dir = os.path.join(load_dir, "agent")
-    if not os.path.isdir(agent_dir):
-        return agent
-    files = [f for f in os.listdir(agent_dir) if f.startswith("agent_")]
-    if not files:
-        return agent
-    epochs = []
-    for f in files:
-        parts = f.split("_")
-        if len(parts) >= 3 and parts[1].isdigit():
-            epochs.append((int(parts[1]), f))
-    if not epochs:
-        return agent
-    latest_epoch, latest_file = max(epochs, key=lambda x: x[0])
-    path = os.path.join(agent_dir, latest_file.rstrip('.npy'))
-    return agent.load(path)
 
-# The function to run a single experiment
+def load_checkpoint(agent, load_dir, args):
+    # load full agent if requested
+    if args.load_agent:
+        return agent.load(args.load_agent)
+    # load critic only
+    if args.load_critic:
+        agent.set_critic_weights(args.load_critic)
+    # load actor only
+    if args.load_actor:
+        agent.policy.set_weights(np.load(args.load_actor))
+    return agent
+
 
 def run_experiment(args, save_dir, exp_id=0, seed=None):
     import matplotlib
     matplotlib.use('Agg')
-    np.random.seed(seed)
 
-    # initialize logger and directories
-    single_logger = Logger(f"seed_{exp_id}", results_dir=save_dir, log_console=True)
+    np.random.seed(seed)
+    
+    single_logger = Logger(f"seed_{exp_id if seed is None else seed}", results_dir=save_dir, log_console=True)
     save_dir = single_logger.path
     os.makedirs(save_dir, exist_ok=True)
     for sub in ("actor", "critic", "agent"):
@@ -108,13 +94,13 @@ def run_experiment(args, save_dir, exp_id=0, seed=None):
     n_steps = args.n_steps
     n_episodes_test = args.n_episodes_test
     train_freq = args.train_frequency
+    gamma = args.gamma
     gamma_eval = args.gamma_eval
 
-    # networks and hyperparams (same as before)
-    # [setup actor_params, critic_params, optimizers...]
-    # omitted for brevity
+    # networks and hyperparams setup (same as original)...
+    # [setup actor_params, critic_params, optimizers, etc.]
+    # omitted here for brevity but must match original logic
 
-    # create agent
     agent = MTSAC(
         mdp_info=mdp.info,
         batch_size=args.batch_size,
@@ -136,79 +122,100 @@ def run_experiment(args, save_dir, exp_id=0, seed=None):
     )
 
     # load checkpoint if requested
-    if args.load_agent or args.load_actor or args.load_critic:
-        agent = load_checkpoint(agent, args.load_agent or save_dir)
+    agent = load_checkpoint(agent, save_dir, args)
     single_logger.info("Loaded checkpoint if available.")
 
     agent.set_logger(single_logger)
     agent.models_summary()
 
-    # prepare core
     core = VecCore(agent, mdp)
     env_names = mdp.get_attr("env_name")
 
     # init metrics dict
-    metrics = {k: {m: [] for m in [
-        "MinReturn","MaxReturn","AverageReturn",
-        "AverageDiscountedReturn","SuccessRate","LogAlpha"
-    ]} for k in env_names}
+    metrics = {k: defaultdict(list) for k in env_names}
+    for k in metrics:
+        for m in ["MinReturn","MaxReturn","AverageReturn","AverageDiscountedReturn","SuccessRate","LogAlpha"]:
+            metrics[k][m] = []
     metrics["all_metaworld"] = {"SuccessRate": []}
 
     # initial replay-fill and eval
     core.eval = False
     core.learn(n_steps=args.initial_replay_size, n_steps_per_fit=args.initial_replay_size, render=args.render_train)
 
+    # evaluate initial policy
     core.eval = True
     total_test = n_contexts * n_episodes_test
-    data, _ = core.evaluate(n_episodes=total_test, render=args.render_eval if exp_id==0 else False)
+    data, info = core.evaluate(n_episodes=total_test, render=(args.render_eval if exp_id==0 else False), get_env_info=True)
 
-    # compute and log initial metrics
-    per_ctx = defaultdict(list)
-    for idx_obs, _, reward, _, done, _ in data:
-        per_ctx[idx_obs[0]].append((reward, done))
+    # compute metrics using get_stats per-context
+    index_data = defaultdict(list)
+    for idx_obs, action, reward, next_obs, done, env_info in data:
+        index_data[idx_obs[0]].append((reward, done))
     sum_sr = 0
     for c, key in enumerate(env_names):
-        eps = split_episodes(per_ctx[c])
-        returns = [sum(ep) for ep in eps]
-        disc = [sum(r*(gamma_eval**i) for i,r in enumerate(ep)) for ep in eps]
-        sr = sum(1 for ep in eps if max(ep)>=0)/len(eps)
-        sum_sr += sr
-        metrics[key]["AverageReturn"].append(np.mean(returns))
-        metrics[key]["AverageDiscountedReturn"].append(np.mean(disc))
-        metrics[key]["SuccessRate"].append(sr)
-    metrics["all_metaworld"]["SuccessRate"].append(sum_sr/n_contexts)
-    if args.wandb:
-        wandb.log({"all_metaworld/SuccessRate": metrics["all_metaworld"]["SuccessRate"][0]}, step=0)
+        # use get_stats for full metrics
+        idx_data = [d for d in data if d[0][0] == c]
+        stats = get_stats(idx_data, gamma, gamma_eval, dataset_info=info[c])
+        min_J, max_J, mean_J, mean_discounted_J, success_rate = stats
+        log_alpha = agent.get_log_alpha(c)
 
-    # main loop with parallel eval and timestamped checkpoints
+        metrics[key]["MinReturn"].append(min_J)
+        metrics[key]["MaxReturn"].append(max_J)
+        metrics[key]["AverageReturn"].append(mean_J)
+        metrics[key]["AverageDiscountedReturn"].append(mean_discounted_J)
+        metrics[key]["SuccessRate"].append(success_rate)
+        metrics[key]["LogAlpha"].append(log_alpha)
+        sum_sr += success_rate
+        if args.wandb:
+            wandb.log({
+                f'{key}/MinReturn': min_J,
+                f'{key}/MaxReturn': max_J,
+                f'{key}/AverageReturn': mean_J,
+                f'{key}/AverageDiscountedReturn': mean_discounted_J,
+                f'{key}/SuccessRate': success_rate,
+                f'{key}/LogAlpha': log_alpha
+            }, step=0, commit=False)
+
+    all_sr = sum_sr / n_contexts
+    metrics["all_metaworld"]["SuccessRate"].append(all_sr)
+    if args.wandb:
+        wandb.log({"all_metaworld/SuccessRate": all_sr}, step=0, commit=True)
+
+    # main loop
     for epoch in trange(args.start_epoch, n_epochs):
-        # training
         core.eval = False
         core.learn(n_steps=n_steps, n_steps_per_fit=train_freq, render=args.render_train)
-        # evaluation
+
         core.eval = True
-        data, _ = core.evaluate(n_episodes=total_test,
-                                render=(args.render_eval if (epoch % args.render_interval==0 and exp_id==0) else False))
-        per_ctx = defaultdict(list)
-        for idx_obs, _, reward, _, done, _ in data:
-            per_ctx[idx_obs[0]].append((reward, done))
         sum_sr = 0
         for c, key in enumerate(env_names):
-            eps = split_episodes(per_ctx[c])
-            returns = [sum(ep) for ep in eps]
-            disc = [sum(r*(gamma_eval**i) for i,r in enumerate(ep)) for ep in eps]
-            sr = sum(1 for ep in eps if max(ep)>=0)/len(eps)
-            sum_sr += sr
-            metrics[key]["AverageReturn"].append(np.mean(returns))
-            metrics[key]["AverageDiscountedReturn"].append(np.mean(disc))
-            metrics[key]["SuccessRate"].append(sr)
+            data, info = core.evaluate(n_episodes=n_episodes_test, render=(args.render_eval if (epoch % args.render_interval == 0 and exp_id==0) else False), get_env_info=True)
+            # stats
+            min_J, max_J, mean_J, mean_discounted_J, success_rate = get_stats(data, gamma, gamma_eval, dataset_info=info)
+            log_alpha = agent.get_log_alpha(c)
+
+            metrics[key]["MinReturn"].append(min_J)
+            metrics[key]["MaxReturn"].append(max_J)
+            metrics[key]["AverageReturn"].append(mean_J)
+            metrics[key]["AverageDiscountedReturn"].append(mean_discounted_J)
+            metrics[key]["SuccessRate"].append(success_rate)
+            metrics[key]["LogAlpha"].append(log_alpha)
+            sum_sr += success_rate
+            
             if args.wandb:
-                wandb.log({f"{key}/AverageReturn":metrics[key]["AverageReturn"][-1],
-                           f"{key}/SuccessRate":metrics[key]["SuccessRate"][-1]}, step=epoch+1)
-        all_sr = sum_sr/n_contexts
+                wandb.log({
+                    f'{key}/MinReturn': min_J,
+                    f'{key}/MaxReturn': max_J,
+                    f'{key}/AverageReturn': mean_J,
+                    f'{key}/AverageDiscountedReturn': mean_discounted_J,
+                    f'{key}/SuccessRate': success_rate,
+                    f'{key}/LogAlpha': log_alpha
+                }, step=epoch+1, commit=False)
+
+        all_sr = sum_sr / n_contexts
         metrics["all_metaworld"]["SuccessRate"].append(all_sr)
         if args.wandb:
-            wandb.log({"all_metaworld/SuccessRate":all_sr}, step=epoch+1)
+            wandb.log({"all_metaworld/SuccessRate": all_sr}, step=epoch+1, commit=True)
 
         # checkpoint
         if (epoch+1) % args.rl_checkpoint_interval == 0:
@@ -218,7 +225,9 @@ def run_experiment(args, save_dir, exp_id=0, seed=None):
     save_checkpoint(agent, save_dir)
     if args.wandb:
         wandb.finish()
+
     return metrics
+
 
 if __name__ == '__main__':
     args = argparser()
