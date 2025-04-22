@@ -20,6 +20,7 @@ import wandb
 # Utils
 import pickle
 import os
+import datetime
 
 # The function is used to run a single experiment 
 def run_experiment(args, save_dir, exp_id = 0, seed = None):
@@ -29,7 +30,8 @@ def run_experiment(args, save_dir, exp_id = 0, seed = None):
     np.random.seed()
 
     single_logger = Logger(f"seed_{exp_id if seed is None else seed}", results_dir=save_dir, log_console=True)
-    save_dir = single_logger.path
+    datetime_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    save_dir = os.path.join(save_dir, datetime_str)
 
     n_epochs = args.n_epochs
     n_steps = args.n_steps
