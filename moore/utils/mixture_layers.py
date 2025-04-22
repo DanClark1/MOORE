@@ -175,6 +175,8 @@ def project_to_unique_subspaces(
     Returns:
       V: (batch, K, dim)                — each expert in its own orthogonal subspace
     """
+
+    print('before')
     batch, K, dim = U.shape
     base, rem = divmod(dim, K)      # e.g. for dim=100, K=6 → base=16, rem=4
     # first `rem` experts get (base+1) dims, the rest get base dims
@@ -193,4 +195,6 @@ def project_to_unique_subspaces(
         ui = U[:, i]             # shape (batch, dim)
         coords = ui @ Bi         # → (batch, sizes[i])
         V[:, i] = coords @ Bi.t()# → (batch, dim)
+
+    print('after')
     return V
