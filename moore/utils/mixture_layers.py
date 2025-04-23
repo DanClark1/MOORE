@@ -163,6 +163,33 @@ class OrthogonalLayer1D(nn.Module):
         basis = torch.transpose(basis,0,1)
         return basis
 
+def batch_project_to_unique_subspaces(
+    U: torch.Tensor,
+    A: torch.Tensor
+) -> torch.Tensor:
+    batch, K, dim = U.shape
+    # (batch, dim*dim)
+    # 2) form a skew-symmetric S(x)
+    S = A - A.transpose(-1,-2)             # (batch, dim, dim)
+    I = torch.eye(dim, device=U.device).unsqueeze(0)  # (1,dim,dim)
+
+    # 3) Cayley transform per-sample
+    #    Q(x) = (I - S)^{-1}(I + S)
+    Q = torch.linalg.solve(I - S, I + S)           # (batch, dim, dim)
+
+    # 4) slice into K disjoint blocks and project each expert
+    dsub = dim // U.shape[1]
+    V = []
+    for i in range(U.shape[1]):
+        Bi = Q[:, :, i*dsub:(i+1)*dsub]            # (batch, dim, dsub)
+        ui = U[:, i].unsqueeze(-1)                 # (batch, dim, 1)
+        coords = Bi.transpose(-1,-2) @ ui          # (batch, dsub, 1)
+        vi = Bi @ coords                           # (batch, dim, 1)
+        V.append(vi.squeeze(-1))                   # (batch, dim)
+    V = torch.stack(V, dim=1)                     # (batch, K, dim)
+    return V
+
+    
 
 def project_to_unique_subspaces(
     U: torch.Tensor,
